@@ -1,0 +1,1 @@
+PowerShell -NoProfile -NoExit -Noninteractive -ExecutionPolicy Bypass -WindowStyle Hidden -Command  %~dp0\l.ps1

@@ -1,8 +1,7 @@
 # WinKeylog
 * Author: VincBreaker
 * Props: jafahulo for doing some improvements. (Turned out to be a big help)
-* Props: illwill, Diggster, IMcPwn, Hak5Darren for providing pre made code I was able to combine.
-* Keylogger: https://www.nextofwindows.com/creating-a-simple-keylogger-using-powershell-download
+* Used snippets from: illwill, Diggster, IMcPwn, Hak5Darren (props to them too :))
 * Version: Version 1.1
 * Target: Windows 10 (chances are it also runs older Windows versions)
 

